@@ -1,122 +1,151 @@
-# 📄 Product Requirements Document (PRD) — Swing Trading Alert Bot (미국장 전용)
+# 📄 Product Requirements Document (PRD) — Swing Trading Alert Bot (U.S. Market Only)
 
-## 1. 목적 (Purpose)
+## 1. Purpose
 
-- **문제**: 주식 차트를 계속 지켜볼 수 없어 매수/매도 타이밍을 놓치기 쉽다.
-- **목표**: 내가 정의한 스윙 트레이딩 전략을 매일 **미국장 마감 직후**와 **개장 직후** 자동으로 확인하고, **텔레그램 알림**을 통해 수동으로 매매를 판단할 수 있게 한다.
+* **Problem**: It’s difficult to constantly watch stock charts and not miss trading signals.
+* **Goal**: Automatically detect swing trading signals from U.S. stocks **at market close** and **at market open**, then send actionable alerts via **Telegram**, so the user (Geoffrey) can decide and execute trades manually.
 
-------
+---
 
-## 2. 범위 (Scope)
+## 2. Scope
 
-- **In-Scope (포함)**
-  - 미국 주식시장(NYSE/NASDAQ) 종목.
-  - **Alpha Vantage API** 기반 일봉 데이터 수집 (하루 500콜 제한 고려).
-  - **전략**: EMA(20/50) 크로스, RSI(14) 돌파, ATR(14) 기반 손절/익절 가이드.
-  - 알림: 텔레그램 봇으로 행동 지침 전달.
-  - 보유 종목 관리: 텔레그램 명령어(`/buy`, `/sell`, `/list`) 기반 상태 저장.
-  - 배포: GitHub Actions (공개 레포, 무료 크론).
-- **Out-of-Scope (제외)**
-  - 한국 주식시장 (향후 v2 이후 고려).
-  - 자동 매매/주문 실행.
-  - 제3자 배포 (개인 전용).
+* **In-Scope**
 
-------
+  * U.S. stock markets (NYSE, NASDAQ).
+  * Data source: **Alpha Vantage API** (daily data, 500 calls/day limit).
+  * Strategy: EMA(20/50) crossover, RSI(14) signals, ATR-based stop/target, gap filter.
+  * Alerts delivered via Telegram bot (beginner-friendly format).
+  * Position management: via Telegram commands (`/buy`, `/sell`, `/list`).
+  * **Infrastructure**: AWS Lambda functions, scheduled by EventBridge, state persisted in S3 (encrypted JSON), provisioned and managed via Terraform.
 
-## 3. 사용자 (User)
+* **Out-of-Scope**
 
-- **타겟 사용자**: Geoffrey (개인 투자자).
-- **Needs**:
-  - 차트를 상시 보지 않아도 신호 확인.
-  - 알림만 보고도 “오늘 사야 할지/팔아야 할지” 빠른 판단 가능.
-  - 보유 종목은 별도로 추적 관리.
+  * Korean stock market (to be considered later).
+  * Automated order execution.
+  * Multi-user support or public distribution (single-user only).
 
-------
+---
 
-## 4. 요구사항 (Requirements)
+## 3. User
 
-### 기능적 요구사항 (Functional)
+* **Primary User**: Geoffrey (individual retail investor).
+* **Needs**:
 
-1. **데이터 수집**
+  * Avoid missing signals without watching charts constantly.
+  * Understand alerts at a glance (“Buy or not?”).
+  * Manage current holdings easily.
 
-   - Alpha Vantage API에서 일봉 데이터 수집.
-   - 하루 200종목 스캔 가능 (500콜 제한 내).
-   - 200일 이상 히스토리 확보.
+---
 
-2. **시그널 엔진**
+## 4. Requirements
 
-   - EMA(20/50) 골든/데드크로스 탐지.
-   - RSI(14) 30/70 돌파 확인.
-   - ATR(14) 기반 손절/익절가 산출.
-   - 갭 필터: 다음 날 개장가가 전일 종가 대비 ±3% 또는 1×ATR 이상이면 기본 진입 보류.
+### Functional
 
-3. **보유 종목 관리**
+1. **Data Collection**
 
-   - 텔레그램 명령어로 상태 관리:
-     - `/buy AAPL` → 보유 등록
-     - `/sell NVDA` → 보유 해제
-     - `/list` → 현재 보유 종목 리스트 표시
-   - 보유 종목은 스크리너와 별도로 **항상 모니터링**.
-   - 보유 종목이 손절/익절가 도달 시 알림 전송.
+   * Pull daily candles from Alpha Vantage.
+   * Support up to \~200 tickers within the free 500 calls/day quota.
+   * Store at least 200 days of history for indicator calculations.
 
-4. **알림 포맷 (초심자 친화형)**
+2. **Signal Engine**
+
+   * EMA(20/50) golden/death cross detection.
+   * RSI(14) re-cross over 30 or under 70.
+   * ATR(14)-based stop loss / take profit guide.
+   * Gap filter: open price vs. previous close > ±3% or > 1×ATR triggers conditional entry rules.
+
+3. **Position Management**
+
+   * Manage via Telegram commands:
+
+     * `/buy AAPL` → mark ticker as held
+     * `/sell NVDA` → remove ticker from held list
+     * `/list` → show all held tickers
+   * Held tickers are **always monitored**, even if excluded by the screener.
+
+4. **Alerts (Telegram)**
+   Example format (buy candidate):
 
    ```
-   🟢 [매수 후보] AAPL
-   오늘 해야 할 일: 내일(한국시간) 개장 직후 시가 매수 검토
-   - 신호: EMA20이 EMA50 위로 돌파 (상승 추세)
-   - 보조: RSI 30 상향 돌파, 추세 우상향
-   - 리스크 관리: 손절 $145.5 / 익절 $159.5 (R:R≈1:2)
-   유효기간: 3거래일
+   🟢 [BUY CANDIDATE] AAPL
+   Action today: Decide if you will enter at the next U.S. market open
+
+   Why:
+   - EMA20 crossed above EMA50 (uptrend)
+   - Price above 200SMA
+   - RSI(14) bounced above 30
+
+   Plan:
+   - Base: enter at next open
+   - Exception: if open gap > 3% or >1×ATR → wait for intraday re-break or pullback
+
+   Risk guide:
+   - ATR(14): $3.10
+   - Stop: $145.5 / Target: $159.5 (≈1:2 R:R)
+   Validity: 3 trading days
    ```
 
-   - 매도 후보일 경우 🔴 아이콘과 텍스트 반대로.
+5. **Operations**
 
-5. **운영**
+   * EventBridge Scheduler triggers Lambdas at U.S. market close and open.
+   * State stored in S3 bucket as **encrypted JSON**.
+   * Secrets (Alpha Vantage key, Telegram token, chat ID) stored in **AWS SSM Parameter Store or Secrets Manager**.
+   * Infrastructure defined and deployed via **Terraform**.
+   * Deduplication of alerts per ticker per date.
 
-   - 하루 2회 실행 (미국장 마감 직후, 개장 직후).
-   - GitHub Actions 스케줄러 (`cron`) 이용.
-   - API Key·텔레그램 토큰은 GitHub Secrets에 저장.
-   - 중복 알림 방지(동일 종목·동일 신호는 1회).
+---
 
-------
+### Non-Functional
 
-### 비기능적 요구사항 (Non-Functional)
+* **Performance**: Handle \~200 tickers within Lambda timeout (15 minutes).
+* **Reliability**: 99%+ alert delivery success rate.
+* **Cost**: Operate within AWS Free Tier (Lambda, EventBridge, S3).
+* **Security**:
 
-- **성능**: 200종목 스캔 + 보유 모니터링을 5분 내 완료.
-- **안정성**: 알림 전송 성공률 99% 이상.
-- **비용 효율**: Alpha Vantage 무료 플랜으로 운영 (필요시 유료 전환).
-- **확장성**: 데이터 소스 교체(Finnhub, Polygon), 한국장 지원 가능하도록 모듈화.
+  * IAM least-privilege roles.
+  * Encrypted S3 bucket.
+  * Secrets in SSM/Secrets Manager.
+* **Scalability**: Can shard tickers across multiple Lambdas or migrate state to DynamoDB for concurrency-safe updates.
 
-------
+---
 
-## 5. 성공 지표 (Success Metrics)
+## 5. Success Metrics
 
-- **Signal Coverage**: 주요 추세 변화 신호를 놓치지 않음.
-- **Execution Readiness**: 알림만 보고도 5분 내 매매 의사결정 가능.
-- **운영 효율성**: 월 추가 비용 0~5달러 수준 유지.
+* **Signal Coverage**: Detect major swing signals without missing.
+* **Decision Efficiency**: Alerts are clear enough for a manual decision in under 5 minutes.
+* **Cost Efficiency**: Maintain infra cost within Free Tier (\$0–5/month).
 
-------
+---
 
-## 6. 리스크 및 대응 (Risks & Mitigation)
+## 6. Risks & Mitigation
 
-- **Alpha Vantage 호출 한도**: 200종목 이상 모니터링 필요 시 Finnhub/Polygon으로 전환.
-- **갭 리스크**: 갭 필터 규칙 적용.
-- **보유 종목 누락 위험**: 텔레그램 명령어 기반 관리로 사용자가 직접 등록/해제.
+* **API rate limits**: 5 requests/min, 500/day → throttle requests, limit to \~200 tickers, or upgrade API plan.
+* **Concurrency on S3 state**: multiple Lambdas writing simultaneously may cause lost updates → use optimistic locking (ETag) or migrate to DynamoDB in v1.1+.
+* **Daylight Savings Time shifts**: handle via EventBridge time expressions + runtime validation.
+* **Terraform misconfigurations**: mitigate via plan/review/approval workflow.
 
-------
+---
 
-## 7. 로드맵 (Roadmap)
+## 7. Roadmap
 
-- **v1 (MVP)**
-  - 종목: 수동 리스트 입력
-  - 전략: EMA/RSI/ATR + 갭 필터
-  - 알림: 텔레그램 (매수/매도 후보 + 행동 지침)
-  - 보유: 텔레그램 명령어로 관리
-- **v1.1**
-  - 자동 스크리너: 거래대금·추세·변동성 필터로 **신규 후보 200종목 자동 선정**
-  - 보유 종목: 항상 별도 모니터링 포함
-- **v1.2**
-  - 알림 메시지에 간단한 시각화(차트 이미지) 추가
-- **v2**
-  - 한국장 지원 (KIS Developers API 연동)
+* **v1 (MVP)**
+
+  * Manual watchlist (user-specified tickers).
+  * Signal engine (EMA/RSI/ATR + gap filter).
+  * Telegram alerts with action-oriented format.
+  * Held tickers managed via `/buy`, `/sell`, `/list`.
+  * **Infra: Lambda + EventBridge + S3 (Terraform-managed)**.
+
+* **v1.1**
+
+  * Automatic screener: select top N tickers by 20-day dollar volume & trend filter.
+  * Always include held tickers in monitoring.
+  * Consider DynamoDB for state to avoid concurrency issues.
+
+* **v1.2**
+
+  * Add visualization (basic chart images in alerts).
+
+* **v2**
+
+  * Add Korean market support (via KIS Developers API).
