@@ -38,7 +38,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 ### A. Core Infrastructure
 
 * [x] Setup Terraform project structure (modules for Lambda, EventBridge, S3, IAM, Secrets)
-* [ ] Define dev/prod environments (`tfvars`)
+* [x] Define dev/prod environments (`tfvars`)
 * [ ] Create state bucket in S3 (encrypted, versioned)
 * [ ] Configure Lambda roles (least privilege)
 
