@@ -39,6 +39,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 * [x] Setup Terraform project structure (modules for Lambda, EventBridge, S3, IAM, Secrets)
 * [x] Define dev/prod environments (`tfvars`)
+* [x] Use Terraform workspaces for env separation (default=dev, prod)
 * [ ] Create state bucket in S3 (encrypted, versioned)
 * [ ] Configure Lambda roles (least privilege)
 

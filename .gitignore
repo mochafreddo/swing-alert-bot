@@ -1,0 +1,42 @@
+# OS / Editors
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+.venv/
+.uv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+.cache/
+dist/
+build/
+layer/
+*.pyc
+
+# Terraform (keep .terraform.lock.hcl tracked)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.d/
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform variables (keep explicit env tfvars tracked)
+*.tfvars.local
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Env files
+.env
+.env.*
+!.env.example

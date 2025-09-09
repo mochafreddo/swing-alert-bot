@@ -88,3 +88,72 @@ Notes:
 - Schedules here use EventBridge (CloudWatch Events) cron in UTC; you may adjust for DST or use EventBridge Scheduler later.
 - Next roadmap tasks will add tfvars for dev/prod and create the state bucket for Terraform itself.
 
+---
+
+## Environments via Workspaces (local state)
+
+This project uses Terraform workspaces to separate environments while keeping local state (solo setup). Use `default` as dev and a `prod` workspace for production.
+
+Quick start:
+
+1) Dev (default workspace)
+- Ensure you are in `infra/terraform`
+- Check workspace: `terraform workspace show` (should be `default`)
+- Plan/apply dev:
+  - `aws-vault exec <profile> -- terraform plan  -var-file=envs/dev.tfvars`
+  - `aws-vault exec <profile> -- terraform apply -var-file=envs/dev.tfvars`
+
+2) Create/select prod workspace
+- First time only: `aws-vault exec <profile> -- terraform workspace new prod`
+- Select: `aws-vault exec <profile> -- terraform workspace select prod`
+- Plan/apply prod:
+  - `aws-vault exec <profile> -- terraform plan  -var-file=envs/prod.tfvars`
+  - `aws-vault exec <profile> -- terraform apply -var-file=envs/prod.tfvars`
+
+3) Verify separation
+- Show current workspace: `terraform workspace show`
+- Outputs reflect that env’s values: `aws-vault exec <profile> -- terraform output`
+- State lists only that env’s resources: `aws-vault exec <profile> -- terraform state list`
+- S3 buckets exist per env (example):
+  - `aws-vault exec <profile> -- aws s3api head-bucket --bucket swing-alert-bot-dev-state`
+  - `aws-vault exec <profile> -- aws s3api head-bucket --bucket swing-alert-bot-prod-state`
+
+Tips:
+- Always verify `terraform workspace show` and pass the matching `-var-file` for that env.
+- Local state is per workspace under `infra/terraform/terraform.tfstate.d/` — do not commit `*.tfstate`.
+- Destroy is also per workspace: `terraform destroy -var-file=envs/<env>.tfvars` (prod caution!).
+
+---
+
+## Makefile Usage (convenience targets)
+
+The repo root contains a `Makefile` wrapping common Terraform commands. It supports optional `aws-vault` via the `AWS_VAULT_PROFILE` variable.
+
+- Init providers:
+  - `make init`
+
+- Check/select workspaces:
+  - `make ws-show`
+  - `AWS_VAULT_PROFILE=<profile> make ws-new-prod`   # create once
+  - `AWS_VAULT_PROFILE=<profile> make ws-select-dev`
+  - `AWS_VAULT_PROFILE=<profile> make ws-select-prod`
+
+- Dev (default workspace):
+  - `AWS_VAULT_PROFILE=<profile> make plan-dev`
+  - `AWS_VAULT_PROFILE=<profile> make apply-dev`
+  - `AWS_VAULT_PROFILE=<profile> make output-dev`
+  - `AWS_VAULT_PROFILE=<profile> make state-list-dev`
+
+- Prod (prod workspace):
+  - `AWS_VAULT_PROFILE=<profile> make plan-prod`
+  - `AWS_VAULT_PROFILE=<profile> make apply-prod`
+  - `AWS_VAULT_PROFILE=<profile> make output-prod`
+  - `AWS_VAULT_PROFILE=<profile> make state-list-prod`
+
+- Bucket sanity checks:
+  - `AWS_VAULT_PROFILE=<profile> make head-bucket-dev`
+  - `AWS_VAULT_PROFILE=<profile> make head-bucket-prod`
+
+Notes:
+- If you don’t use `aws-vault`, omit `AWS_VAULT_PROFILE` and ensure your AWS CLI is authenticated.
+- All targets run with `-chdir=infra/terraform`, so you can invoke from the repo root.

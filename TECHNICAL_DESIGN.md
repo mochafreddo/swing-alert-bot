@@ -309,3 +309,71 @@ uv pip install --no-deps -t build/python -r .cache/req.txt
 rsync -a src/ build/src/
 cd build && zip -r ../lambda.zip .
 ```
+
+---
+
+## 16. Environments & State (Local by default)
+
+This project uses two environments (dev, prod) with the same Terraform code. For a solo developer on a single machine, keep Terraform state **local** and use workspaces to separate environments. A remote backend can be added later if CI or multiple machines are introduced.
+
+- Workspaces:
+  - Use `default` as the dev workspace, and create a `prod` workspace: `terraform workspace new prod`.
+  - Select workspace before running a plan/apply: `terraform workspace select prod`.
+
+- Optional: Remote State backend (for CI/multi-machine):
+  - S3 bucket: `sab-tfstate-<ACCOUNT_ID>` (versioning on, encryption on)
+  - DynamoDB table: `sab-tf-locks` (PK: `LockID`)
+  - Backend key: `env/${terraform.workspace}/terraform.tfstate`
+
+- Optional: Bootstrap via CLI (one-time):
+  - Create bucket (us-east-1): `aws s3api create-bucket --bucket sab-tfstate-<ACCOUNT_ID> --region us-east-1`
+  - Enable versioning: `aws s3api put-bucket-versioning --bucket sab-tfstate-<ACCOUNT_ID> --versioning-configuration Status=Enabled`
+  - Enable default encryption: `aws s3api put-bucket-encryption --bucket sab-tfstate-<ACCOUNT_ID> --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'`
+  - Create DynamoDB lock table: `aws dynamodb create-table --table-name sab-tf-locks --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region us-east-1`
+
+- Optional: Backend configuration snippet (add to `infra/terraform/backend.tf`):
+```
+terraform {
+  backend "s3" {
+    bucket         = "sab-tfstate-<ACCOUNT_ID>"
+    key            = "env/${terraform.workspace}/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "sab-tf-locks"
+    encrypt        = true
+  }
+}
+```
+
+- Optional: Migrate existing local state:
+  - `terraform init -reconfigure -migrate-state`
+  - Verify S3 now contains `env/default/terraform.tfstate` (and `env/prod/...` after prod apply)
+
+- Optional: Minimal IAM for backend access (attach to deploy identity):
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::sab-tfstate-<ACCOUNT_ID>",
+      "Condition": {"StringLike": {"s3:prefix": ["env/*/terraform.tfstate"]}}
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::sab-tfstate-<ACCOUNT_ID>/env/*/terraform.tfstate"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["dynamodb:DescribeTable","dynamodb:GetItem","dynamodb:PutItem","dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:<ACCOUNT_ID>:table/sab-tf-locks"
+    }
+  ]
+}
+```
+
+Notes:
+- Keep the app’s S3 “state bucket” (encrypted JSON) separate from any Terraform backend bucket.
+- Local state tips: do not commit `*.tfstate`; back up `infra/terraform/terraform.tfstate.d/` occasionally.
+- For production safeguards, consider `prevent_destroy` on critical resources and use KMS (`aws:kms`) if compliance requires.

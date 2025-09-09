@@ -149,3 +149,14 @@
 * **v2**
 
   * Add Korean market support (via KIS Developers API).
+
+---
+
+## 8. Deployment & Environments
+
+* **Environments**: Two environments (dev, prod). The same Terraform code is applied with environment-specific `tfvars`. Separation is enforced using Terraform workspaces (`default` used as dev; a `prod` workspace is created for production).
+* **State (Terraform)**: For a solo project on one machine, keep Terraform state **local**. If/when CI or multiple machines are used, an S3+DynamoDB remote backend can be added later.
+  * Optional remote layout (when needed): S3 bucket (e.g., `sab-tfstate-<account-id>`, versioned, encrypted) + DynamoDB table `sab-tf-locks` (PK: `LockID`), with key `env/${terraform.workspace}/terraform.tfstate`.
+* **App State vs TF State**: The project’s “state bucket” created by Terraform stores the app’s encrypted JSON (held tickers, dedupe keys). If using a Terraform remote backend, keep it in a separate bucket.
+* **IAM (Least Privilege)**: The deploy identity has minimal permissions for provisioning resources (S3, IAM, Lambda, EventBridge, SSM/Secrets). Lambda runtime roles only receive access to S3 state, logs, and secret reads as required.
+* **Operate**: Apply from `infra/terraform` with the appropriate workspace and var-file, e.g. `terraform workspace select prod && terraform apply -var-file=envs/prod.tfvars`.
