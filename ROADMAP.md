@@ -53,11 +53,11 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 * [x] Implement EMA(20/50), RSI(14), ATR(14), SMA(200)
 * [x] Implement signal detection logic (crossovers, RSI re-cross, gap filter)
-* [ ] Add stop/target calculation helpers
+* [x] Add stop/target calculation helpers
 
 ### D. State Management
 
-* [ ] Define encrypted JSON schema (`held`, `alerts_sent`, `last_update_id`)
+* [x] Define encrypted JSON schema (`held`, `alerts_sent`, `last_update_id`)
 * [ ] Implement S3 read/write helpers (with Fernet encryption)
 * [ ] Add optimistic locking using ETag conditional writes
 * [ ] Unit tests for state read/write

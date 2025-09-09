@@ -44,4 +44,5 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = [
   "src/common",
+  "src/state",
 ]
