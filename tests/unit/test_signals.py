@@ -10,6 +10,9 @@ from common.signals import (
     rsi_recross_below_today,
     gap_up_threshold,
     is_excessive_gap_up,
+    long_stop_price,
+    long_target_price,
+    long_stop_target,
     evaluate_long_candidate,
 )
 
@@ -91,3 +94,22 @@ def test_evaluate_long_candidate_insufficient_history_returns_none():
     )
     assert evaluate_long_candidate("TEST", series) is None
 
+
+def test_long_stop_target_helpers_basic():
+    entry = 150.0
+    atr = 3.0
+    # Stop = 150 - 1.5*3 = 145.5; Target = 150 + 3*3 = 159.0
+    assert abs(long_stop_price(entry, atr) - 145.5) < 1e-9
+    assert abs(long_target_price(entry, atr) - 159.0) < 1e-9
+
+    st = long_stop_target(entry, atr)
+    assert st is not None
+    stop, target = st
+    assert abs(stop - 145.5) < 1e-9
+    assert abs(target - 159.0) < 1e-9
+
+
+def test_long_stop_target_helpers_none_when_atr_missing_or_nonpositive():
+    assert long_stop_target(100.0, None) is None
+    assert long_stop_target(100.0, 0.0) is None
+    assert long_stop_target(100.0, -1.0) is None

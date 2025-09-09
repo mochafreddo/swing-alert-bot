@@ -133,6 +133,45 @@ def is_excessive_gap_up(prev_close: float, today_open: float, atr_value: Optiona
     return today_open >= level
 
 
+# -------------------- Stop/Target helpers (ATR-based) --------------------
+def long_stop_price(entry_price: float, atr_value: float, *, mult: float = 1.5) -> float:
+    """Compute stop price for a long position using ATR multiple.
+
+    Formula (from TECHNICAL_DESIGN.md): Stop = Close − 1.5×ATR (default).
+    """
+    return float(entry_price) - float(atr_value) * float(mult)
+
+
+def long_target_price(entry_price: float, atr_value: float, *, mult: float = 3.0) -> float:
+    """Compute target price for a long position using ATR multiple.
+
+    Formula (from TECHNICAL_DESIGN.md): Target = Close + 3×ATR (default).
+    """
+    return float(entry_price) + float(atr_value) * float(mult)
+
+
+def long_stop_target(
+    entry_price: float,
+    atr_value: Optional[float],
+    *,
+    stop_mult: float = 1.5,
+    target_mult: float = 3.0,
+) -> Optional[Tuple[float, float]]:
+    """Return (stop, target) prices for a long position.
+
+    Returns None when `atr_value` is None or non-positive.
+    """
+    if atr_value is None:
+        return None
+    atrf = float(atr_value)
+    if atrf <= 0.0:
+        return None
+    entry = float(entry_price)
+    stop = long_stop_price(entry, atrf, mult=stop_mult)
+    target = long_target_price(entry, atrf, mult=target_mult)
+    return stop, target
+
+
 # -------------------- Composite candidate checks --------------------
 
 @dataclass
@@ -201,7 +240,9 @@ __all__ = [
     "rsi_recross_below_today",
     "gap_up_threshold",
     "is_excessive_gap_up",
+    "long_stop_price",
+    "long_target_price",
+    "long_stop_target",
     "LongCandidate",
     "evaluate_long_candidate",
 ]
-

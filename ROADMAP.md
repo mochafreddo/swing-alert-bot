@@ -52,7 +52,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 ### C. Signal Engine
 
 * [x] Implement EMA(20/50), RSI(14), ATR(14), SMA(200)
-* [ ] Implement signal detection logic (crossovers, RSI re-cross, gap filter)
+* [x] Implement signal detection logic (crossovers, RSI re-cross, gap filter)
 * [ ] Add stop/target calculation helpers
 
 ### D. State Management
