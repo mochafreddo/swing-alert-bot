@@ -45,7 +45,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 ### B. Data Layer
 
-* [ ] Implement Alpha Vantage client (with rate limiting)
+* [x] Implement Alpha Vantage client (with rate limiting)
 * [ ] Add caching logic (skip if data unchanged since last run)
 * [ ] Unit tests with mocked AV responses
 
