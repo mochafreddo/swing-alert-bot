@@ -8,3 +8,6 @@ environment  = "dev"
 # telegram_chat_id      = ""
 # fernet_key            = ""
 
+# Optional: exact state bucket name override. Leave unset to
+# automatically use a fork-safe unique name that includes your AWS account id.
+# state_bucket_name = "my-unique-bucket-name"

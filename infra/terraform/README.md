@@ -18,9 +18,12 @@ Quick start (outline):
 Example main.tf wiring (edit to fit):
 
 ```
+// Root module computes a fork-safe, unique S3 bucket name by default
+// ("${var.project_name}-${var.environment}-state-<AWS_ACCOUNT_ID>").
+// You can override via `var.state_bucket_name` if you need an exact name.
 module "state_bucket" {
   source      = "./modules/s3"
-  bucket_name = "${var.project_name}-${var.environment}-state"
+  bucket_name = local.state_bucket_name
 }
 
 module "secrets" {
@@ -88,6 +91,22 @@ Notes:
 - Schedules here use EventBridge (CloudWatch Events) cron in UTC; you may adjust for DST or use EventBridge Scheduler later.
 - Next roadmap tasks will add tfvars for dev/prod and create the state bucket for Terraform itself.
 
+### Fork-safe S3 bucket names
+
+- S3 bucket names are globally unique. This project avoids collisions by
+  defaulting the state bucket to: `${var.project_name}-${var.environment}-state-<AWS_ACCOUNT_ID>`.
+- To pin an exact bucket name (e.g., you already own one), set
+  `state_bucket_name` in a local, uncommitted tfvars file and include it when
+  running plan/apply. The `Makefile` auto-loads these if present:
+
+```
+# infra/terraform/envs/local.dev.tfvars (gitignored)
+state_bucket_name = "swing-alert-bot-dev-state"
+
+# infra/terraform/envs/local.prod.tfvars (gitignored)
+state_bucket_name = "swing-alert-bot-prod-state"
+```
+
 ---
 
 ## Environments via Workspaces (local state)
@@ -114,9 +133,9 @@ Quick start:
 - Show current workspace: `terraform workspace show`
 - Outputs reflect that env’s values: `aws-vault exec <profile> -- terraform output`
 - State lists only that env’s resources: `aws-vault exec <profile> -- terraform state list`
-- S3 buckets exist per env (example):
-  - `aws-vault exec <profile> -- aws s3api head-bucket --bucket swing-alert-bot-dev-state`
-  - `aws-vault exec <profile> -- aws s3api head-bucket --bucket swing-alert-bot-prod-state`
+ - S3 bucket per env (discover via outputs):
+  - `aws-vault exec <profile> -- terraform output -raw state_bucket_name`
+  - then: `aws-vault exec <profile> -- aws s3api head-bucket --bucket $(terraform output -raw state_bucket_name)`
 
 Tips:
 - Always verify `terraform workspace show` and pass the matching `-var-file` for that env.

@@ -35,6 +35,7 @@ override.tf.json
 *.tfvars.local
 *.auto.tfvars
 *.auto.tfvars.json
+infra/terraform/envs/local.*.tfvars
 
 # Env files
 .env
