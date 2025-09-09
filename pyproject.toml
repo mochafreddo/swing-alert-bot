@@ -12,6 +12,8 @@ authors = [
 dependencies = [
   "httpx>=0.27.0,<0.29",
   "pydantic>=2.7,<3.0",
+  "boto3>=1.34,<2.0",
+  "cryptography>=42.0,<44.0",
 ]
 
 [build-system]
