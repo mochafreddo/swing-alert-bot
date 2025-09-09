@@ -22,3 +22,8 @@ variable "tags" {
   default     = {}
 }
 
+# Optional: secrets supplied via tfvars to create SSM parameters
+variable "alpha_vantage_api_key" { type = string, default = null }
+variable "telegram_bot_token"    { type = string, default = null }
+variable "telegram_chat_id"      { type = string, default = null }
+variable "fernet_key"            { type = string, default = null }

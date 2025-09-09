@@ -1,17 +1,34 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+data "aws_partition" "current" {}
+
 locals {
   role_name = var.role_name_override != "" ? var.role_name_override : "${var.project_name}-${var.environment}-lambda-role"
 
+  logs_arn_base = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}"
+
   statements = concat(
     [
+      // Separate statements to scope CloudWatch Logs access tightly
       {
-        Sid    = "CloudWatchLogs"
+        Sid    = "CloudWatchCreateLogGroup"
         Effect = "Allow"
         Action = [
           "logs:CreateLogGroup",
+        ]
+        Resource = "${local.logs_arn_base}:*"
+      },
+      {
+        Sid    = "CloudWatchWriteLogs"
+        Effect = "Allow"
+        Action = [
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "*"
+        Resource = [
+          "${local.logs_arn_base}:log-group:/aws/lambda/*",
+          "${local.logs_arn_base}:log-group:/aws/lambda/*:log-stream:*",
+        ]
       },
       {
         Sid    = "S3ListBucket"
@@ -77,4 +94,3 @@ resource "aws_iam_role_policy_attachment" "attach" {
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.lambda_inline.arn
 }
-
