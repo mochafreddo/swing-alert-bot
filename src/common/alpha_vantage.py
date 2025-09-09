@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from .rate_limiter import SlidingWindowRateLimiter, RateLimitError
+from .cache import SymbolUpdateCache
 
 
 DEFAULT_BASE_URL = "https://www.alphavantage.co/query"
@@ -110,6 +111,50 @@ class AlphaVantageClient:
         except ValidationError as ve:  # from pydantic model validation
             raise AlphaVantageApiError(f"Failed to parse daily payload: {ve}") from ve
 
+    def daily_if_changed(
+        self,
+        symbol: str,
+        *,
+        adjusted: bool = True,
+        outputsize: Literal["compact", "full"] = "full",
+        cache: Optional[SymbolUpdateCache] = None,
+    ) -> Optional[List[Candle]]:
+        """
+        Fetch daily series only if the provider's newest date differs from last run.
+
+        - Uses a simple persistent cache to remember the newest candle date per symbol.
+        - Returns a list of candles when changed; returns None when unchanged.
+
+        Notes
+        - This still performs a single API call to validate freshness. It avoids
+          downstream processing if data is unchanged. To fully avoid network calls
+          on repeated same-day runs, a higher-level scheduler policy is preferred.
+        """
+        fn = "TIME_SERIES_DAILY_ADJUSTED" if adjusted else "TIME_SERIES_DAILY"
+        params = {
+            "function": fn,
+            "symbol": symbol,
+            "outputsize": outputsize,
+            "datatype": "json",
+        }
+        data = self._request(params)
+        newest_date_iso = self._extract_newest_date_iso(data)
+
+        c = cache or SymbolUpdateCache()
+        prev = c.get_last_refreshed(symbol, adjusted=adjusted)
+        if prev is not None and prev == newest_date_iso:
+            # Update last-checked timestamp for observability, keep same date
+            c.set_last_refreshed(symbol, adjusted=adjusted, last_refreshed=prev)
+            return None
+
+        # Parse and persist the new newest date
+        try:
+            candles = self._parse_daily_payload(data, adjusted=adjusted)
+        except ValidationError as ve:
+            raise AlphaVantageApiError(f"Failed to parse daily payload: {ve}") from ve
+        c.set_last_refreshed(symbol, adjusted=adjusted, last_refreshed=newest_date_iso)
+        return candles
+
     # --------------- Internal ---------------
     def _request(self, params: Dict[str, Any]) -> Dict[str, Any]:
         # Merge the apikey
@@ -208,6 +253,37 @@ class AlphaVantageClient:
         items.sort(key=lambda c: c.ts, reverse=True)
         return items
 
+    @staticmethod
+    def _extract_newest_date_iso(payload: Dict[str, Any]) -> str:
+        """
+        Determine the newest candle date as YYYY-MM-DD.
+
+        Prefers Meta Data["3. Last Refreshed"] when available; otherwise falls back
+        to max(Time Series (Daily).keys()). Handles timestamps by truncating to date.
+        """
+        # Try Meta Data first
+        meta = payload.get("Meta Data")
+        if isinstance(meta, dict):
+            last = meta.get("3. Last Refreshed") or meta.get("3. Last Refreshed ")
+            if isinstance(last, str) and last:
+                # Could be "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+                return last.split(" ")[0]
+
+        # Fallback: inspect series keys
+        series_key = None
+        for k in payload.keys():
+            if k.startswith("Time Series (Daily)"):
+                series_key = k
+                break
+        if not series_key:
+            raise AlphaVantageApiError("Daily series missing in payload")
+        series: Dict[str, Dict[str, str]] = payload[series_key]
+        if not series:
+            raise AlphaVantageApiError("Daily series is empty")
+        # Keys are YYYY-MM-DD
+        newest = max(series.keys())
+        return newest
+
 
 __all__ = [
     "AlphaVantageClient",
@@ -216,4 +292,3 @@ __all__ = [
     "AlphaVantageRateLimitError",
     "Candle",
 ]
-
