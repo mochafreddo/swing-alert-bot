@@ -47,7 +47,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 * [x] Implement Alpha Vantage client (with rate limiting)
 * [x] Add caching logic (skip if data unchanged since last run)
-* [ ] Unit tests with mocked AV responses
+* [x] Unit tests with mocked AV responses
 
 ### C. Signal Engine
 

@@ -46,3 +46,5 @@ Caching:
   matches the last run, helping you skip redundant processing.
 - The cache file defaults to `.cache/av_daily_meta.json`. Set `SWING_CACHE_DIR` to change
   the directory (the file name stays `av_daily_meta.json`).
+- Cache entry schema: `{ "{SYMBOL}:{adj|raw}": { "last_refreshed": "YYYY-MM-DD", "last_checked_at": "YYYY-MM-DDTHH:MM:SS+00:00" } }`.
+  Timestamps are timezone-aware ISO 8601 with explicit `+00:00` offset (UTC).

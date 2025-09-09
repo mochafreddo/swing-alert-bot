@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -22,7 +22,7 @@ def _default_cache_file() -> Path:
 @dataclass
 class _Entry:
     last_refreshed: str  # ISO date in YYYY-MM-DD
-    last_checked_at: str  # ISO timestamp
+    last_checked_at: str  # ISO 8601 timestamp with offset, e.g., "+00:00"
 
 
 class SymbolUpdateCache:
@@ -85,10 +85,11 @@ class SymbolUpdateCache:
 
     def set_last_refreshed(self, symbol: str, *, adjusted: bool, last_refreshed: str) -> None:
         self._ensure_loaded()
-        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        # Use timezone-aware UTC; keep standard "+00:00" offset form
+        dt = datetime.now(UTC)
+        now = dt.isoformat(timespec="seconds")
         self._data[self._key(symbol, adjusted=adjusted)] = {
             "last_refreshed": last_refreshed,
             "last_checked_at": now,
         }
         self._save()
-
