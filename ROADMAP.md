@@ -66,12 +66,12 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 * [x] Implement Telegram sendMessage wrapper
 * [x] Implement getUpdates poller (with offset tracking)
-* [ ] Implement commands:
+* [x] Implement commands:
 
   * [x] `/buy TICKER` → mark as held
   * [x] `/sell TICKER` → unmark
   * [x] `/list` → show held list
-* [ ] Format beginner-friendly alerts (action-oriented)
+* [x] Format beginner-friendly alerts (action-oriented)
 
 ### F. Lambda Runners
 

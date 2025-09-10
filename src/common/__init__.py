@@ -12,4 +12,5 @@ __all__ = [
     "indicators",
     "signals",
     "telegram",
+    "alerts",
 ]
