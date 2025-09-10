@@ -74,7 +74,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
   * [x] `/list` → show held list
 * [x] Format beginner-friendly alerts (action-oriented)
 * [ ] Chat ID whitelisting (config + behavior)
-  * [ ] Config via SSM (`PARAM_PREFIXallowed_chat_ids`, CSV or JSON array)
+  * [x] Config via SSM (`PARAM_PREFIXallowed_chat_ids`, CSV or JSON array)
   * [ ] Enforce whitelist in command poller (ignore non-whitelisted; advance offset; no ACK)
   * [ ] Unit tests for allowed vs blocked chats
 

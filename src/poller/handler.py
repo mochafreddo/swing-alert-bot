@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, Optional, Tuple
+import json
+from typing import Any, Dict, Optional, Tuple, Union, List, Set
 
 from common.telegram import TelegramClient, TelegramError
 from state.models import State
@@ -50,6 +51,63 @@ def _load_ssm_params(prefix: str, names: list[str]) -> Dict[str, Optional[str]]:
         val = resp.get("Parameter", {}).get("Value")
         out[name] = val if isinstance(val, str) and val != "" else None
     return out
+
+
+def _parse_allowed_chat_ids(raw: Optional[str]) -> Set[Union[int, str]]:
+    """Parse allowed chat ids from CSV or JSON array.
+
+    Accepts either:
+    - JSON array: e.g., "[12345, -67890, \"@mychannel\"]"
+    - CSV (commas/newlines/spaces treated as separators): "12345, -67890, @mychannel"
+
+    Returns a set of chat identifiers (ints for numeric ids, str otherwise).
+    Empty or invalid input yields an empty set.
+    """
+    if not raw or not isinstance(raw, str):
+        return set()
+
+    # Try JSON first
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            out: Set[Union[int, str]] = set()
+            for item in data:
+                # Convert numbers to int, strings kept as-is
+                if isinstance(item, bool):
+                    # Avoid True/False being treated as 1/0
+                    continue
+                if isinstance(item, (int,)):
+                    out.add(int(item))
+                elif isinstance(item, (float,)):
+                    # Only accept float that is integral
+                    if float(item).is_integer():
+                        out.add(int(item))
+                elif isinstance(item, str):
+                    s = item.strip()
+                    if s:
+                        # Try to coerce numeric strings (including negatives)
+                        try:
+                            out.add(int(s))
+                        except Exception:
+                            out.add(s)
+            return out
+    except Exception:
+        pass
+
+    # Fallback to CSV parsing; split on commas/newlines/spaces
+    # Normalize separators to commas, then split
+    norm = raw.replace("\n", ",").replace(" ", ",")
+    items: List[str] = [tok.strip() for tok in norm.split(",") if tok.strip()]
+    out2: Set[Union[int, str]] = set()
+    for tok in items:
+        # Trim surrounding quotes
+        if (tok.startswith("\"") and tok.endswith("\"")) or (tok.startswith("'") and tok.endswith("'")):
+            tok = tok[1:-1]
+        try:
+            out2.add(int(tok))
+        except Exception:
+            out2.add(tok)
+    return out2
 
 
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
@@ -160,9 +218,11 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
     prefix = _require(prefix, ENV_PARAM_PREFIX)
 
     # Load secrets from SSM
-    params = _load_ssm_params(prefix, ["telegram_bot_token", "fernet_key"])
+    params = _load_ssm_params(prefix, ["telegram_bot_token", "fernet_key", "allowed_chat_ids"])
     token = _require(params.get("telegram_bot_token"), f"{prefix}telegram_bot_token")
     fernet_key = _require(params.get("fernet_key"), f"{prefix}fernet_key")
+    # Parse whitelist (no-op in this step; enforcement handled separately)
+    _ = _parse_allowed_chat_ids(params.get("allowed_chat_ids"))
 
     # State store
     store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key)
