@@ -6,6 +6,7 @@ environment  = "dev"
 # alpha_vantage_api_key = ""
 # telegram_bot_token    = ""
 # telegram_chat_id      = ""
+# allowed_chat_ids      = "" # e.g. "12345,67890" or "[\"12345\",\"67890\"]"
 # fernet_key            = ""
 
 # Optional: exact state bucket name override. Leave unset to

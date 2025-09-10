@@ -35,6 +35,7 @@ module "secrets" {
     telegram_bot_token    = var.telegram_bot_token
     telegram_chat_id      = var.telegram_chat_id
     fernet_key            = var.fernet_key
+    allowed_chat_ids      = var.allowed_chat_ids
   }
 }
 
@@ -84,10 +85,15 @@ variable "alpha_vantage_api_key" { type = string, default = null }
 variable "telegram_bot_token"    { type = string, default = null }
 variable "telegram_chat_id"      { type = string, default = null }
 variable "fernet_key"            { type = string, default = null }
+variable "allowed_chat_ids"      { type = string, default = null }
 ```
 
 Notes:
 - Secrets module only creates parameters when values are non-empty.
+- `allowed_chat_ids` is intended for chat ID whitelisting. It may be provided
+  as a CSV (e.g., `"12345,67890"`) or a JSON array string
+  (e.g., `"[\"12345\", \"67890\"]"`). It is stored as an SSM SecureString
+  for simplicity even though it is not sensitive.
 - Schedules here use EventBridge (CloudWatch Events) cron in UTC; you may adjust for DST or use EventBridge Scheduler later.
 - Next roadmap tasks will add tfvars for dev/prod and create the state bucket for Terraform itself.
 

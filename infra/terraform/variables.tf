@@ -35,3 +35,4 @@ variable "alpha_vantage_api_key" { type = string, default = null }
 variable "telegram_bot_token"    { type = string, default = null }
 variable "telegram_chat_id"      { type = string, default = null }
 variable "fernet_key"            { type = string, default = null }
+variable "allowed_chat_ids"      { type = string, default = null }

@@ -42,7 +42,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] Use Terraform workspaces for env separation (default=dev, prod)
 * [x] Create state bucket in S3 (encrypted, versioned)
 * [x] Configure Lambda roles (least privilege)
-* [ ] Add SSM parameter for chat ID whitelist (e.g., `allowed_chat_ids`)
+* [x] Add SSM parameter for chat ID whitelist (e.g., `allowed_chat_ids`)
 * [ ] Grant Lambdas SSM read for `allowed_chat_ids`
 
 ### B. Data Layer

@@ -24,6 +24,7 @@ module "secrets" {
     telegram_bot_token    = var.telegram_bot_token
     telegram_chat_id      = var.telegram_chat_id
     fernet_key            = var.fernet_key
+    allowed_chat_ids      = var.allowed_chat_ids
   }
 }
 
