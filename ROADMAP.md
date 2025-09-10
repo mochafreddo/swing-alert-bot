@@ -64,8 +64,8 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 ### E. Telegram Integration
 
-* [ ] Implement Telegram sendMessage wrapper
-* [ ] Implement getUpdates poller (with offset tracking)
+* [x] Implement Telegram sendMessage wrapper
+* [x] Implement getUpdates poller (with offset tracking)
 * [ ] Implement commands:
 
   * [ ] `/buy TICKER` → mark as held

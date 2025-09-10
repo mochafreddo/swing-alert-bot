@@ -114,6 +114,45 @@ class TelegramClient:
         code = data.get("error_code")
         raise TelegramApiError(f"{desc} (code={code})")
 
+    def get_updates(
+        self,
+        *,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        timeout: Optional[int] = None,
+        allowed_updates: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """
+        Fetch incoming updates via Telegram `getUpdates`.
+
+        Parameters mirror Telegram Bot API:
+        - offset: identifier of the first update to return (typically last_update_id + 1)
+        - limit:  number of updates to retrieve (1-100, default 100)
+        - timeout: long-polling timeout in seconds (default 0 for short poll)
+        - allowed_updates: list of update types to receive (e.g., ["message"]).
+
+        Returns list of Update dicts on success; raises TelegramApiError otherwise.
+        """
+        payload: Dict[str, Any] = {}
+        if offset is not None:
+            payload["offset"] = offset
+        if limit is not None:
+            payload["limit"] = limit
+        if timeout is not None:
+            payload["timeout"] = timeout
+        if allowed_updates is not None:
+            payload["allowed_updates"] = allowed_updates
+
+        data = self._request("getUpdates", payload)
+        if not isinstance(data, dict) or "ok" not in data:
+            raise TelegramApiError("Malformed response from Telegram Bot API")
+        if data.get("ok") is True and isinstance(data.get("result"), list):
+            return data["result"]  # type: ignore[return-value]
+
+        desc = data.get("description") or "Telegram API error"
+        code = data.get("error_code")
+        raise TelegramApiError(f"{desc} (code={code})")
+
     # --------------- Internal ---------------
     def _request(self, method: str, json_body: Dict[str, Any]) -> Dict[str, Any]:
         # Local throttle
@@ -181,4 +220,3 @@ __all__ = [
     "TelegramApiError",
     "TelegramRateLimitError",
 ]
-
