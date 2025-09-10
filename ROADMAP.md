@@ -43,7 +43,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] Create state bucket in S3 (encrypted, versioned)
 * [x] Configure Lambda roles (least privilege)
 * [x] Add SSM parameter for chat ID whitelist (e.g., `allowed_chat_ids`)
-* [ ] Grant Lambdas SSM read for `allowed_chat_ids`
+* [x] Grant Lambdas SSM read for `allowed_chat_ids`
 
 ### B. Data Layer
 

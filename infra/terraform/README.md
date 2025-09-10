@@ -44,7 +44,14 @@ module "iam" {
   project_name = var.project_name
   environment  = var.environment
   s3_bucket_arn = module.state_bucket.bucket_arn
-  allow_ssm_parameter_arns = values(module.secrets.parameter_arns)
+  # Also include the explicit ARN for the chat whitelist param so Lambdas
+  # can read it even if created outside Terraform or left unset in tfvars.
+  allow_ssm_parameter_arns = distinct(concat(
+    values(module.secrets.parameter_arns),
+    [
+      "arn:${data.aws_partition.current.partition}:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/allowed_chat_ids"
+    ]
+  ))
 }
 
 module "lambda" {
@@ -94,6 +101,9 @@ Notes:
   as a CSV (e.g., `"12345,67890"`) or a JSON array string
   (e.g., `"[\"12345\", \"67890\"]"`). It is stored as an SSM SecureString
   for simplicity even though it is not sensitive.
+- Lambdas are always granted read access to `/\${var.project_name}/\${var.environment}/allowed_chat_ids`,
+  regardless of whether this stack creates that parameter. This allows out-of-band
+  management of the whitelist while preserving least privilege.
 - Schedules here use EventBridge (CloudWatch Events) cron in UTC; you may adjust for DST or use EventBridge Scheduler later.
 - Next roadmap tasks will add tfvars for dev/prod and create the state bucket for Terraform itself.
 
