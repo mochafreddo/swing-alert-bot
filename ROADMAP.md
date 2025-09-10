@@ -67,7 +67,6 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] Implement Telegram sendMessage wrapper
 * [x] Implement getUpdates poller (with offset tracking)
 * [x] Implement commands:
-
   * [x] `/buy TICKER` → mark as held
   * [x] `/sell TICKER` → unmark
   * [x] `/list` → show held list
@@ -75,8 +74,8 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 ### F. Lambda Runners
 
-* [ ] `eod_runner` → compute signals, send alerts
-* [ ] `open_runner` → apply gap filter, send updates
+* [x] `eod_runner` → compute signals, send alerts
+* [x] `open_runner` → apply gap filter, send updates
 * [ ] `command_poller` → process Telegram commands
 
 ### G. CI/CD
