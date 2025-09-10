@@ -42,6 +42,8 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] Use Terraform workspaces for env separation (default=dev, prod)
 * [x] Create state bucket in S3 (encrypted, versioned)
 * [x] Configure Lambda roles (least privilege)
+* [ ] Add SSM parameter for chat ID whitelist (e.g., `allowed_chat_ids`)
+* [ ] Grant Lambdas SSM read for `allowed_chat_ids`
 
 ### B. Data Layer
 
@@ -71,12 +73,24 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
   * [x] `/sell TICKER` → unmark
   * [x] `/list` → show held list
 * [x] Format beginner-friendly alerts (action-oriented)
+* [ ] Chat ID whitelisting (config + behavior)
+  * [ ] Config via SSM (`PARAM_PREFIXallowed_chat_ids`, CSV or JSON array)
+  * [ ] Enforce whitelist in command poller (ignore non-whitelisted; advance offset; no ACK)
+  * [ ] Unit tests for allowed vs blocked chats
 
 ### F. Lambda Runners
 
 * [x] `eod_runner` → compute signals, send alerts
 * [x] `open_runner` → apply gap filter, send updates
-* [ ] `command_poller` → process Telegram commands
+* [x] `command_poller` → process Telegram commands
+* [ ] Enforce whitelist on outbound sends (EOD/Open)
+  * [ ] Validate `telegram_chat_id` against whitelist (no-op if unset)
+  * [ ] Unit tests for blocked outbound when not whitelisted
+
+### Documentation
+
+* [ ] Document whitelist configuration and operations in `TECHNICAL_DESIGN.md`
+* [ ] Add a short note to README on adding/removing chat IDs
 
 ### G. CI/CD
 

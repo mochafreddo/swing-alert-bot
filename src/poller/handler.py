@@ -9,8 +9,49 @@ from state.models import State
 from state.s3_store import S3StateStore
 
 
-# Environment variable name for Telegram bot token
-ENV_TELEGRAM_TOKEN = "SWING_TELEGRAM_TOKEN"
+# Environment configuration (aligned with EOD/Open runners)
+ENV_STATE_BUCKET = "STATE_BUCKET"
+ENV_STATE_KEY = "STATE_KEY"  # optional; defaults to "state.json"
+ENV_PARAM_PREFIX = "PARAM_PREFIX"
+
+# Backward-compatible fallbacks
+FALLBACK_ENV_STATE_BUCKET = "SWING_STATE_BUCKET"
+FALLBACK_ENV_STATE_KEY = "SWING_STATE_KEY"
+FALLBACK_ENV_PARAM_PREFIX = "SWING_PARAM_PREFIX"
+
+
+def _getenv(name: str, default: Optional[str] = None) -> Optional[str]:
+    v = os.environ.get(name)
+    return v if v not in (None, "") else default
+
+
+def _require(v: Optional[str], what: str) -> str:
+    if not v:
+        raise RuntimeError(f"Missing required configuration: {what}")
+    return v
+
+
+def _load_ssm_params(prefix: str, names: list[str]) -> Dict[str, Optional[str]]:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    ssm = boto3.client("ssm")
+    out: Dict[str, Optional[str]] = {k: None for k in names}
+    for name in names:
+        full = f"{prefix}{name}"
+        try:
+            resp = ssm.get_parameter(Name=full, WithDecryption=True)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("ParameterNotFound", "AccessDeniedException"):
+                out[name] = None
+                continue
+            raise
+        val = resp.get("Parameter", {}).get("Value")
+        out[name] = val if isinstance(val, str) and val != "" else None
+    return out
+
+
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _SELL_RE = re.compile(r"^\s*/sell\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _LIST_RE = re.compile(r"^\s*/list\s*$", re.IGNORECASE)
@@ -99,20 +140,32 @@ def _max_update_id(updates: list[dict]) -> Optional[int]:
 
 def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, timeout: int = 0) -> Dict[str, Any]:
     """
-    Poll Telegram getUpdates once, updating the stored last_update_id.
+    Poll Telegram getUpdates once, processing basic commands and updating state.
 
-    - Loads encrypted state from S3 (env: SWING_STATE_BUCKET, SWING_STATE_KEY, SWING_FERNET_KEY).
-    - Uses Telegram bot token from env SWING_TELEGRAM_TOKEN.
+    - Resolves state bucket/key and SSM prefix from env, with fallbacks.
+    - Loads Telegram bot token and Fernet key from SSM via prefix.
+    - Reads encrypted state from S3.
     - Calls getUpdates with offset = last_update_id + 1 (if available).
-    - Writes back new last_update_id if new updates are received.
+    - Applies /buy, /sell, /list and sends acknowledgements.
+    - Writes back new last_update_id (and any held changes).
 
-    Returns a summary dict: {"received": N, "new_last_update_id": int|None}.
+    Returns: {"ok": True, "received": N, "new_last_update_id": int|None}.
     """
-    token = os.environ.get(ENV_TELEGRAM_TOKEN)
-    if not token:
-        raise RuntimeError(f"Missing env: {ENV_TELEGRAM_TOKEN}")
+    # Resolve env configuration
+    bucket = _getenv(ENV_STATE_BUCKET) or _getenv(FALLBACK_ENV_STATE_BUCKET)
+    key = _getenv(ENV_STATE_KEY, "state.json") or _getenv(FALLBACK_ENV_STATE_KEY, "state.json")
+    prefix = _getenv(ENV_PARAM_PREFIX) or _getenv(FALLBACK_ENV_PARAM_PREFIX)
 
-    store = S3StateStore.from_env()
+    bucket = _require(bucket, ENV_STATE_BUCKET)
+    prefix = _require(prefix, ENV_PARAM_PREFIX)
+
+    # Load secrets from SSM
+    params = _load_ssm_params(prefix, ["telegram_bot_token", "fernet_key"])
+    token = _require(params.get("telegram_bot_token"), f"{prefix}telegram_bot_token")
+    fernet_key = _require(params.get("fernet_key"), f"{prefix}fernet_key")
+
+    # State store
+    store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key)
     state, etag = store.read()
 
     offset = _compute_next_offset(state)
@@ -174,18 +227,17 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             # Fallback without optimistic lock to avoid losing offset progression or /buy updates
             store.write(state)
 
-    return {"received": len(updates), "new_last_update_id": state.last_update_id}
+    return {"ok": True, "received": len(updates), "new_last_update_id": state.last_update_id}
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """AWS Lambda entry point for scheduled Telegram command polling.
+    """AWS Lambda entry for scheduled Telegram command polling.
 
     Environment:
-    - SWING_STATE_BUCKET, SWING_STATE_KEY, SWING_FERNET_KEY
-    - SWING_TELEGRAM_TOKEN
+    - STATE_BUCKET, STATE_KEY (default: state.json), PARAM_PREFIX
+    - Fallbacks: SWING_STATE_BUCKET, SWING_STATE_KEY, SWING_PARAM_PREFIX
+    - SSM under PARAM_PREFIX must provide: telegram_bot_token, fernet_key
     """
-    # Default to only message updates for command handling
+    # Only message updates are needed for command handling
     allowed = ["message"]
-    result = run_once(allowed_updates=allowed, limit=100, timeout=0)
-    # Minimal log-friendly payload
-    return {"ok": True, **result}
+    return run_once(allowed_updates=allowed, limit=100, timeout=0)
