@@ -73,10 +73,10 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
   * [x] `/sell TICKER` → unmark
   * [x] `/list` → show held list
 * [x] Format beginner-friendly alerts (action-oriented)
-* [ ] Chat ID whitelisting (config + behavior)
+* [x] Chat ID whitelisting (config + behavior)
   * [x] Config via SSM (`PARAM_PREFIXallowed_chat_ids`, CSV or JSON array)
-  * [ ] Enforce whitelist in command poller (ignore non-whitelisted; advance offset; no ACK)
-  * [ ] Unit tests for allowed vs blocked chats
+  * [x] Enforce whitelist in command poller (ignore non-whitelisted; advance offset; no ACK)
+  * [x] Unit tests for allowed vs blocked chats
 
 ### F. Lambda Runners
 

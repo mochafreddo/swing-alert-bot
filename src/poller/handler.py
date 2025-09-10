@@ -110,6 +110,42 @@ def _parse_allowed_chat_ids(raw: Optional[str]) -> Set[Union[int, str]]:
     return out2
 
 
+def _is_chat_allowed(chat: dict, allowed: Set[Union[int, str]]) -> bool:
+    """Return True if the chat is allowed per whitelist.
+
+    Rules:
+    - If `allowed` is empty, treat as no whitelist (allow all).
+    - Allow if chat.id (int) is in allowed.
+    - Also allow if chat.username matches any string in allowed (case-insensitive),
+      with or without leading '@'.
+    """
+    if not allowed:
+        return True
+
+    # Chat id path (Telegram uses ints for ids; channels/groups often negative)
+    chat_id = None
+    try:
+        chat_id = chat.get("id") if isinstance(chat, dict) else None
+    except Exception:
+        chat_id = None
+    if isinstance(chat_id, int) and chat_id in allowed:
+        return True
+
+    # Username path
+    username = None
+    try:
+        username = chat.get("username") if isinstance(chat, dict) else None
+    except Exception:
+        username = None
+    if isinstance(username, str) and username:
+        u = username.strip().lstrip("@").lower()
+        # Normalize allowed strings to lowercase without '@'
+        allowed_usernames = {s.lstrip("@").lower() for s in allowed if isinstance(s, str)}
+        if u in allowed_usernames:
+            return True
+
+    return False
+
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _SELL_RE = re.compile(r"^\s*/sell\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _LIST_RE = re.compile(r"^\s*/list\s*$", re.IGNORECASE)
@@ -221,8 +257,8 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
     params = _load_ssm_params(prefix, ["telegram_bot_token", "fernet_key", "allowed_chat_ids"])
     token = _require(params.get("telegram_bot_token"), f"{prefix}telegram_bot_token")
     fernet_key = _require(params.get("fernet_key"), f"{prefix}fernet_key")
-    # Parse whitelist (no-op in this step; enforcement handled separately)
-    _ = _parse_allowed_chat_ids(params.get("allowed_chat_ids"))
+    # Parse whitelist
+    allowed_set = _parse_allowed_chat_ids(params.get("allowed_chat_ids"))
 
     # State store
     store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key)
@@ -248,6 +284,10 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             chat = msg.get("chat") if isinstance(msg.get("chat"), dict) else None
             chat_id = chat.get("id") if isinstance(chat, dict) else None
             if chat_id is None:
+                continue
+
+            # Enforce whitelist: skip processing and do not ACK if not allowed
+            if not _is_chat_allowed(chat, allowed_set):
                 continue
 
             # Try /buy
