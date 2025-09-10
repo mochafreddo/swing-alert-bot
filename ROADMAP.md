@@ -70,7 +70,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
   * [x] `/buy TICKER` → mark as held
   * [x] `/sell TICKER` → unmark
-  * [ ] `/list` → show held list
+  * [x] `/list` → show held list
 * [ ] Format beginner-friendly alerts (action-oriented)
 
 ### F. Lambda Runners

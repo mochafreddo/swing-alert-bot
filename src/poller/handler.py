@@ -13,6 +13,7 @@ from state.s3_store import S3StateStore
 ENV_TELEGRAM_TOKEN = "SWING_TELEGRAM_TOKEN"
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _SELL_RE = re.compile(r"^\s*/sell\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
+_LIST_RE = re.compile(r"^\s*/list\s*$", re.IGNORECASE)
 
 
 def _normalize_ticker(t: str) -> str:
@@ -61,6 +62,21 @@ def _apply_sell(state: State, ticker: str) -> Tuple[bool, str]:
     return (True, f"✅ Unmarked: {ticker}")
 
 
+def _parse_list(text: str) -> bool:
+    return _LIST_RE.match(text or "") is not None
+
+
+def _format_list_response(state: State) -> str:
+    if not state.held:
+        return "Held list is empty."
+    # Ensure stable order for display
+    try:
+        tickers = sorted(state.held)
+    except Exception:
+        tickers = list(state.held)
+    return f"Held tickers ({len(tickers)}): " + ", ".join(tickers)
+
+
 def _compute_next_offset(state: State) -> Optional[int]:
     """Return the offset to use for getUpdates based on stored state.
 
@@ -107,7 +123,7 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             # Surface Telegram client errors as runtime failures for Lambda visibility
             raise RuntimeError(f"Telegram getUpdates failed: {e}") from e
 
-        # Process commands: /buy TICKER, /sell TICKER
+        # Process commands: /buy TICKER, /sell TICKER, /list
         acks: list[tuple[int | str, str]] = []
         for upd in updates:
             msg = upd.get("message") if isinstance(upd, dict) else None
@@ -133,6 +149,11 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             if ticker is not None:
                 changed, ack = _apply_sell(state, ticker)
                 acks.append((chat_id, ack))
+                continue
+
+            # Try /list
+            if _parse_list(text):
+                acks.append((chat_id, _format_list_response(state)))
                 continue
 
         # Send acknowledgements back to the originating chats
