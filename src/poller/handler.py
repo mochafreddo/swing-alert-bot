@@ -12,6 +12,7 @@ from state.s3_store import S3StateStore
 # Environment variable name for Telegram bot token
 ENV_TELEGRAM_TOKEN = "SWING_TELEGRAM_TOKEN"
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
+_SELL_RE = re.compile(r"^\s*/sell\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 
 
 def _normalize_ticker(t: str) -> str:
@@ -36,6 +37,28 @@ def _apply_buy(state: State, ticker: str) -> Tuple[bool, str]:
     except Exception:
         pass
     return (True, f"✅ Marked as held: {ticker}")
+
+
+def _parse_sell(text: str) -> Optional[str]:
+    m = _SELL_RE.match(text or "")
+    if not m:
+        return None
+    return _normalize_ticker(m.group(1))
+
+
+def _apply_sell(state: State, ticker: str) -> Tuple[bool, str]:
+    """Apply a /sell command to State. Returns (changed, message)."""
+    if ticker not in state.held:
+        return (False, f"Not currently held: {ticker}")
+    try:
+        state.held = [t for t in state.held if t != ticker]
+    except Exception:
+        # Fallback to in-place remove if list comprehension fails for any reason
+        try:
+            state.held.remove(ticker)
+        except Exception:
+            pass
+    return (True, f"✅ Unmarked: {ticker}")
 
 
 def _compute_next_offset(state: State) -> Optional[int]:
@@ -84,7 +107,7 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             # Surface Telegram client errors as runtime failures for Lambda visibility
             raise RuntimeError(f"Telegram getUpdates failed: {e}") from e
 
-        # Process commands (currently only: /buy TICKER)
+        # Process commands: /buy TICKER, /sell TICKER
         acks: list[tuple[int | str, str]] = []
         for upd in updates:
             msg = upd.get("message") if isinstance(upd, dict) else None
@@ -98,11 +121,19 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             if chat_id is None:
                 continue
 
+            # Try /buy
             ticker = _parse_buy(text)
-            if ticker is None:
+            if ticker is not None:
+                changed, ack = _apply_buy(state, ticker)
+                acks.append((chat_id, ack))
                 continue
-            changed, ack = _apply_buy(state, ticker)
-            acks.append((chat_id, ack))
+
+            # Try /sell
+            ticker = _parse_sell(text)
+            if ticker is not None:
+                changed, ack = _apply_sell(state, ticker)
+                acks.append((chat_id, ack))
+                continue
 
         # Send acknowledgements back to the originating chats
         for chat_id, ack in acks:

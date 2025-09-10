@@ -68,8 +68,8 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] Implement getUpdates poller (with offset tracking)
 * [ ] Implement commands:
 
-  * [ ] `/buy TICKER` → mark as held
-  * [ ] `/sell TICKER` → unmark
+  * [x] `/buy TICKER` → mark as held
+  * [x] `/sell TICKER` → unmark
   * [ ] `/list` → show held list
 * [ ] Format beginner-friendly alerts (action-oriented)
 
