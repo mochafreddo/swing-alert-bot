@@ -4,6 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Optional, Tuple
+from uuid import uuid4
 
 import boto3
 from botocore.exceptions import ClientError
@@ -59,8 +60,8 @@ class S3StateStore:
     - `read()` returns a `(state, etag)` pair. If the object does not exist,
       it returns `(State.empty(), None)`.
     - `write(state, if_match=None)` writes the encrypted bytes and returns the new ETag.
-      The `if_match` argument is reserved for a future optimistic-locking enhancement;
-      it is currently ignored by S3 PutObject and will be wired up in a later task.
+      When `if_match` is provided, uses a copy-based conditional update so the write
+      succeeds only if the current object ETag matches `if_match` (optimistic lock).
 
     Environment variables (optional)
     - `SWING_STATE_BUCKET`: S3 bucket for the state object
@@ -133,20 +134,62 @@ class S3StateStore:
 
         Args:
         - state: the State to persist.
-        - if_match: reserved for future optimistic-locking. Currently not enforced
-          for PutObject; will be integrated via a copy-based conditional update in
-          a subsequent task.
+        - if_match: expected current ETag of the destination object for
+          optimistic locking. If provided, the write proceeds only if the
+          current object ETag matches `if_match`. Otherwise, an
+          `OptimisticLockError` is raised. Internally implemented via a
+          copy-based conditional update for atomicity on S3.
         """
         plaintext = _dump_state_json(state)
         ciphertext = self._fernet.encrypt(plaintext)
 
-        # Note: S3 PutObject does not honor If-Match; we ignore `if_match` for now.
-        resp = self._s3.put_object(
+        # Fast path: no optimistic lock required
+        if if_match is None:
+            resp = self._s3.put_object(
+                Bucket=self._obj.bucket,
+                Key=self._obj.key,
+                Body=ciphertext,
+                ContentType="application/octet-stream",
+            )
+            return str(resp.get("ETag"))
+
+        # Conditional path:
+        # S3 PutObject does not support If-Match. To achieve optimistic locking,
+        # we upload to a temporary key, then COPY over the destination with an
+        # If-Match precondition on the destination's current ETag. This is the
+        # recommended compare-and-swap pattern for S3.
+        temp_key = f"{self._obj.key}.tmp-{uuid4().hex}"
+
+        put_tmp = self._s3.put_object(
             Bucket=self._obj.bucket,
-            Key=self._obj.key,
+            Key=temp_key,
             Body=ciphertext,
             ContentType="application/octet-stream",
         )
+        del put_tmp  # not used; destination ETag is returned by copy
+
+        try:
+            resp = self._s3.copy_object(
+                Bucket=self._obj.bucket,
+                Key=self._obj.key,
+                CopySource={"Bucket": self._obj.bucket, "Key": temp_key},
+                IfMatch=if_match,
+                MetadataDirective="COPY",
+            )
+        except ClientError as e:  # pragma: no cover - error branch validated by unit test
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("PreconditionFailed", "412"):
+                raise OptimisticLockError(
+                    f"ETag mismatch for s3://{self._obj.bucket}/{self._obj.key}"
+                ) from e
+            raise
+        finally:
+            # Best-effort cleanup of temp object
+            try:
+                self._s3.delete_object(Bucket=self._obj.bucket, Key=temp_key)
+            except Exception:
+                pass
+
         return str(resp.get("ETag"))
 
 
@@ -168,3 +211,7 @@ def save_state_to_s3(
     store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key, region_name=region_name)
     return store.write(state, if_match=if_match)
 
+
+class OptimisticLockError(Exception):
+    """Raised when an ETag precondition fails during a conditional write."""
+    pass

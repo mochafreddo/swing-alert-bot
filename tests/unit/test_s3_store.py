@@ -72,7 +72,7 @@ _install_optional_stubs()
 
 # Import after stubs are in place
 from state.models import State
-from state.s3_store import S3StateStore
+from state.s3_store import S3StateStore, OptimisticLockError
 
 
 class _FakeBody:
@@ -99,6 +99,46 @@ class _FakeS3:
         if not item:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         return {"Body": _FakeBody(item["Body"]), "ETag": item["ETag"]}
+
+    def copy_object(
+        self,
+        *,
+        Bucket: str,
+        Key: str,
+        CopySource,
+        IfMatch: str | None = None,
+        MetadataDirective: str | None = None,
+    ):
+        from botocore.exceptions import ClientError  # type: ignore
+
+        # Enforce destination precondition
+        dest_item = self._store.get((Bucket, Key))
+        if IfMatch is not None:
+            if not dest_item or dest_item.get("ETag") != IfMatch:
+                raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "CopyObject")
+
+        # Resolve source
+        if isinstance(CopySource, dict):
+            sb = CopySource.get("Bucket")
+            sk = CopySource.get("Key")
+        else:
+            src = str(CopySource).lstrip("/")
+            parts = src.split("/", 1)
+            sb = parts[0]
+            sk = parts[1] if len(parts) > 1 else ""
+
+        src_item = self._store.get((sb, sk))
+        if not src_item:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "CopyObject")
+
+        body = src_item["Body"]
+        etag = f'"fake-{len(body)}"'
+        self._store[(Bucket, Key)] = {"Body": body, "ETag": etag}
+        return {"ETag": etag}
+
+    def delete_object(self, *, Bucket: str, Key: str):
+        self._store.pop((Bucket, Key), None)
+        return {}
 
 
 def test_read_missing_returns_empty_state():
@@ -144,3 +184,37 @@ def test_from_env_missing_vars_raises(monkeypatch):
     with pytest.raises(RuntimeError):
         mod.S3StateStore.from_env()
 
+
+def test_write_with_if_match_succeeds_when_etag_matches():
+    s3 = _FakeS3()
+    store = S3StateStore(s3=s3, bucket="b", key="k", fernet_key=b"f" * 32)
+
+    # Seed initial state
+    etag1 = store.write(State(held=[], alerts_sent={}, last_update_id=1))
+
+    # Update with matching if_match
+    new_state = State(held=["AAPL"], alerts_sent={"AAPL:2025-09-05:EMA_GC": True}, last_update_id=2)
+    etag2 = store.write(new_state, if_match=etag1)
+    assert etag2 != etag1
+
+    # Verify content
+    roundtrip, read_etag = store.read()
+    assert read_etag == etag2
+    assert roundtrip == new_state
+
+
+def test_write_with_if_match_raises_on_conflict():
+    s3 = _FakeS3()
+    store1 = S3StateStore(s3=s3, bucket="b", key="k", fernet_key=b"f" * 32)
+    store2 = S3StateStore(s3=s3, bucket="b", key="k", fernet_key=b"f" * 32)
+
+    # Initial write
+    etag1 = store1.write(State(held=[], alerts_sent={}, last_update_id=1))
+
+    # store1 updates first (increasing payload size to force new ETag)
+    etag2 = store1.write(State(held=["LONGNAME" * 10], alerts_sent={}, last_update_id=2), if_match=etag1)
+    assert etag2 != etag1
+
+    # store2 tries to update using stale etag
+    with pytest.raises(OptimisticLockError):
+        store2.write(State(held=["MSFT"], alerts_sent={}, last_update_id=3), if_match=etag1)

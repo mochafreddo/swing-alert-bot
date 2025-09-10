@@ -59,7 +59,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 
 * [x] Define encrypted JSON schema (`held`, `alerts_sent`, `last_update_id`)
 * [x] Implement S3 read/write helpers (with Fernet encryption)
-* [ ] Add optimistic locking using ETag conditional writes
+* [x] Add optimistic locking using ETag conditional writes
 * [x] Unit tests for state read/write
 
 ### E. Telegram Integration
