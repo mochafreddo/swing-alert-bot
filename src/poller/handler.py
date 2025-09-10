@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Optional, Tuple
 
 from common.telegram import TelegramClient, TelegramError
 from state.models import State
@@ -10,6 +11,31 @@ from state.s3_store import S3StateStore
 
 # Environment variable name for Telegram bot token
 ENV_TELEGRAM_TOKEN = "SWING_TELEGRAM_TOKEN"
+_BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
+
+
+def _normalize_ticker(t: str) -> str:
+    return t.strip().upper()
+
+
+def _parse_buy(text: str) -> Optional[str]:
+    m = _BUY_RE.match(text or "")
+    if not m:
+        return None
+    return _normalize_ticker(m.group(1))
+
+
+def _apply_buy(state: State, ticker: str) -> Tuple[bool, str]:
+    """Apply a /buy command to State. Returns (changed, message)."""
+    if ticker in state.held:
+        return (False, f"Already marked as held: {ticker}")
+    state.held.append(ticker)
+    # keep a stable canonical order for ergonomics
+    try:
+        state.held.sort()
+    except Exception:
+        pass
+    return (True, f"✅ Marked as held: {ticker}")
 
 
 def _compute_next_offset(state: State) -> Optional[int]:
@@ -58,6 +84,34 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
             # Surface Telegram client errors as runtime failures for Lambda visibility
             raise RuntimeError(f"Telegram getUpdates failed: {e}") from e
 
+        # Process commands (currently only: /buy TICKER)
+        acks: list[tuple[int | str, str]] = []
+        for upd in updates:
+            msg = upd.get("message") if isinstance(upd, dict) else None
+            if not isinstance(msg, dict):
+                continue
+            text = msg.get("text")
+            if not isinstance(text, str):
+                continue
+            chat = msg.get("chat") if isinstance(msg.get("chat"), dict) else None
+            chat_id = chat.get("id") if isinstance(chat, dict) else None
+            if chat_id is None:
+                continue
+
+            ticker = _parse_buy(text)
+            if ticker is None:
+                continue
+            changed, ack = _apply_buy(state, ticker)
+            acks.append((chat_id, ack))
+
+        # Send acknowledgements back to the originating chats
+        for chat_id, ack in acks:
+            try:
+                tg.send_message(chat_id=chat_id, text=ack)
+            except TelegramError:
+                # Ignore send errors for acks to avoid failing the whole poll cycle
+                pass
+
     new_last = _max_update_id(updates)
     if new_last is not None and (state.last_update_id is None or new_last > state.last_update_id):
         state.last_update_id = new_last
@@ -65,7 +119,7 @@ def run_once(*, allowed_updates: Optional[list[str]] = None, limit: int = 100, t
         try:
             store.write(state, if_match=etag)
         except Exception:
-            # Fallback without optimistic lock to avoid losing offset progression
+            # Fallback without optimistic lock to avoid losing offset progression or /buy updates
             store.write(state)
 
     return {"received": len(updates), "new_last_update_id": state.last_update_id}
