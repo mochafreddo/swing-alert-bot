@@ -377,3 +377,46 @@ Notes:
 - Keep the app’s S3 “state bucket” (encrypted JSON) separate from any Terraform backend bucket.
 - Local state tips: do not commit `*.tfstate`; back up `infra/terraform/terraform.tfstate.d/` occasionally.
 - For production safeguards, consider `prevent_destroy` on critical resources and use KMS (`aws:kms`) if compliance requires.
+
+---
+
+## 17. Chat Whitelist (Telegram)
+
+Purpose: restrict bot interactions to approved Telegram chat IDs. This protects a single-user bot from unsolicited messages and prevents accidental outbound sends to the wrong chat.
+
+- Config source: AWS SSM Parameter Store at `${PARAM_PREFIX}allowed_chat_ids`.
+  - `PARAM_PREFIX` is provided via Lambda env, typically `/${project_name}/${environment}/` (e.g., `/swing-alert-bot/dev/`).
+  - Value format: either CSV (e.g., `"12345,67890"`) or JSON array string (e.g., `"[\"12345\",\"67890\"]"`).
+  - Stored as SecureString for convenience (not secret), managed by Terraform’s `secrets` module when provided, or set out-of-band.
+
+- Loading & caching:
+  - Read on cold start; cache in-process between invocations. Optional TTL refresh (e.g., 5–15 minutes) to pick up changes without redeploy.
+  - If the parameter is missing/empty → whitelist enforcement is disabled (no-op). This matches the MVP’s single-user setup for fast bring-up.
+  - If parsing fails (malformed CSV/JSON) → fail closed for inbound commands (ignore) and outbound sends (drop) and log a warning.
+
+- Inbound enforcement (Telegram Poller):
+  - For each update, check `message.chat.id` against the whitelist.
+  - If not whitelisted: do not reply, but advance the update offset to avoid reprocessing spam; log at debug level.
+  - If whitelisted: process `/buy`, `/sell`, `/list` normally.
+
+- Outbound enforcement (EOD/Open Runners):
+  - When sending alerts, validate the target `telegram_chat_id` is whitelisted.
+  - If whitelist is unset → no-op (send as usual).
+  - If set and target is not whitelisted → drop the send and log a warning to avoid accidental broadcasts.
+
+- Terraform integration:
+  - `infra/terraform/README.md` defines `allowed_chat_ids` as an optional secret and always grants Lambdas read access to `${PARAM_PREFIX}allowed_chat_ids`.
+  - You can supply the value via `envs/<env>.tfvars` or manage the parameter out-of-band.
+
+- Operations (update whitelist):
+  - CSV example:
+    - `aws ssm put-parameter --name "/${PROJECT}/${ENV}/allowed_chat_ids" --type SecureString --value "12345,67890" --overwrite`
+  - JSON array example:
+    - `aws ssm put-parameter --name "/${PROJECT}/${ENV}/allowed_chat_ids" --type SecureString --value '["12345","67890"]' --overwrite`
+  - Verify:
+    - `aws ssm get-parameter --name "/${PROJECT}/${ENV}/allowed_chat_ids" --with-decryption --query Parameter.Value --output text`
+
+- Testing (unit): ensure
+  - Non-whitelisted inbound updates are ignored and offsets advance.
+  - Outbound sends are blocked when target chat is not in the whitelist.
+  - Unset whitelist behaves as no-op; malformed values fail closed with warnings.
