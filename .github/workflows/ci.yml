@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv with caching (Python 3.11)
+        id: setup-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
+
+      - name: Sync project dependencies (locked)
+        run: uv sync --locked --dev
+
+      - name: Lint (ruff)
+        run: |
+          # Use ephemeral tool runner; no need to add as a dev dep
+          uvx ruff@latest check .
+
+      - name: Typecheck (pyright)
+        run: |
+          # Run pyright with the project installed; add tool via --with
+          uv run --with pyright -- pyright
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Prune uv cache (CI)
+        if: always()
+        run: uv cache prune --ci
+
