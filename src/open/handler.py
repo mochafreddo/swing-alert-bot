@@ -9,6 +9,7 @@ from common.alpha_vantage import AlphaVantageClient, Candle
 from common.indicators import compute_indicators
 from common.signals import gap_up_threshold, is_excessive_gap_up
 from common.telegram import TelegramClient, TelegramError
+from common.whitelist import parse_allowed_chat_ids, is_target_allowed
 from state.models import State
 from state.s3_store import S3StateStore
 
@@ -156,12 +157,24 @@ def run_once() -> Dict[str, Any]:
             "telegram_bot_token",
             "telegram_chat_id",
             "fernet_key",
+            "allowed_chat_ids",  # optional whitelist
         ],
     )
     av_key = _require(params.get("alpha_vantage_api_key"), f"{prefix}alpha_vantage_api_key")
     tg_token = _require(params.get("telegram_bot_token"), f"{prefix}telegram_bot_token")
     tg_chat = _require(params.get("telegram_chat_id"), f"{prefix}telegram_chat_id")
     fernet_key = _require(params.get("fernet_key"), f"{prefix}fernet_key")
+
+    # Parse whitelist and coerce chat id
+    allowed_set = parse_allowed_chat_ids(params.get("allowed_chat_ids"))
+    try:
+        chat_id: int | str = int(tg_chat)
+    except Exception:
+        chat_id = tg_chat
+
+    # If whitelist configured and target not allowed → no-op
+    if allowed_set and not is_target_allowed(chat_id, allowed_set):
+        return {"ok": True, "checked": 0, "updates": 0, "note": "telegram_chat_id not in allowed_chat_ids; skipped"}
 
     # Load state
     store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key)
@@ -176,11 +189,7 @@ def run_once() -> Dict[str, Any]:
     checked = 0
 
     with AlphaVantageClient(av_key) as av, TelegramClient(tg_token) as tg:
-        try:
-            chat_id: int | str = int(tg_chat)
-        except Exception:
-            chat_id = tg_chat
-
+        
         for sym, d_prev in candidates_by_symbol.items():
             # Fetch daily series (descending newest-first), then make ascending
             try:
@@ -252,4 +261,3 @@ def run_once() -> Dict[str, Any]:
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return run_once()
-

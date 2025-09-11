@@ -6,6 +6,10 @@ import json
 from typing import Any, Dict, Optional, Tuple, Union, List, Set
 
 from common.telegram import TelegramClient, TelegramError
+from common.whitelist import (
+    parse_allowed_chat_ids as _parse_allowed_chat_ids,
+    is_chat_allowed as _is_chat_allowed,
+)
 from state.models import State
 from state.s3_store import S3StateStore
 
@@ -53,98 +57,7 @@ def _load_ssm_params(prefix: str, names: list[str]) -> Dict[str, Optional[str]]:
     return out
 
 
-def _parse_allowed_chat_ids(raw: Optional[str]) -> Set[Union[int, str]]:
-    """Parse allowed chat ids from CSV or JSON array.
-
-    Accepts either:
-    - JSON array: e.g., "[12345, -67890, \"@mychannel\"]"
-    - CSV (commas/newlines/spaces treated as separators): "12345, -67890, @mychannel"
-
-    Returns a set of chat identifiers (ints for numeric ids, str otherwise).
-    Empty or invalid input yields an empty set.
-    """
-    if not raw or not isinstance(raw, str):
-        return set()
-
-    # Try JSON first
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            out: Set[Union[int, str]] = set()
-            for item in data:
-                # Convert numbers to int, strings kept as-is
-                if isinstance(item, bool):
-                    # Avoid True/False being treated as 1/0
-                    continue
-                if isinstance(item, (int,)):
-                    out.add(int(item))
-                elif isinstance(item, (float,)):
-                    # Only accept float that is integral
-                    if float(item).is_integer():
-                        out.add(int(item))
-                elif isinstance(item, str):
-                    s = item.strip()
-                    if s:
-                        # Try to coerce numeric strings (including negatives)
-                        try:
-                            out.add(int(s))
-                        except Exception:
-                            out.add(s)
-            return out
-    except Exception:
-        pass
-
-    # Fallback to CSV parsing; split on commas/newlines/spaces
-    # Normalize separators to commas, then split
-    norm = raw.replace("\n", ",").replace(" ", ",")
-    items: List[str] = [tok.strip() for tok in norm.split(",") if tok.strip()]
-    out2: Set[Union[int, str]] = set()
-    for tok in items:
-        # Trim surrounding quotes
-        if (tok.startswith("\"") and tok.endswith("\"")) or (tok.startswith("'") and tok.endswith("'")):
-            tok = tok[1:-1]
-        try:
-            out2.add(int(tok))
-        except Exception:
-            out2.add(tok)
-    return out2
-
-
-def _is_chat_allowed(chat: dict, allowed: Set[Union[int, str]]) -> bool:
-    """Return True if the chat is allowed per whitelist.
-
-    Rules:
-    - If `allowed` is empty, treat as no whitelist (allow all).
-    - Allow if chat.id (int) is in allowed.
-    - Also allow if chat.username matches any string in allowed (case-insensitive),
-      with or without leading '@'.
-    """
-    if not allowed:
-        return True
-
-    # Chat id path (Telegram uses ints for ids; channels/groups often negative)
-    chat_id = None
-    try:
-        chat_id = chat.get("id") if isinstance(chat, dict) else None
-    except Exception:
-        chat_id = None
-    if isinstance(chat_id, int) and chat_id in allowed:
-        return True
-
-    # Username path
-    username = None
-    try:
-        username = chat.get("username") if isinstance(chat, dict) else None
-    except Exception:
-        username = None
-    if isinstance(username, str) and username:
-        u = username.strip().lstrip("@").lower()
-        # Normalize allowed strings to lowercase without '@'
-        allowed_usernames = {s.lstrip("@").lower() for s in allowed if isinstance(s, str)}
-        if u in allowed_usernames:
-            return True
-
-    return False
+## Whitelist helpers moved to common.whitelist
 
 _BUY_RE = re.compile(r"^\s*/buy\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)
 _SELL_RE = re.compile(r"^\s*/sell\s+([A-Za-z0-9.\-]{1,15})\s*$", re.IGNORECASE)

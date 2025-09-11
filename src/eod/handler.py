@@ -13,6 +13,7 @@ from common.indicators import compute_indicators
 from common.signals import evaluate_long_candidate
 from common.alerts import BuyCandidateContext, format_buy_candidate_alert
 from common.telegram import TelegramClient, TelegramError
+from common.whitelist import parse_allowed_chat_ids, is_target_allowed
 from state.s3_store import S3StateStore
 from state.models import State
 
@@ -95,12 +96,32 @@ def run_once() -> Dict[str, Any]:
             "telegram_chat_id",
             "fernet_key",
             "watchlist",  # optional
+            "allowed_chat_ids",  # optional whitelist
         ],
     )
     av_key = _require(params.get("alpha_vantage_api_key"), f"{prefix}alpha_vantage_api_key")
     tg_token = _require(params.get("telegram_bot_token"), f"{prefix}telegram_bot_token")
     tg_chat = _require(params.get("telegram_chat_id"), f"{prefix}telegram_chat_id")
     fernet_key = _require(params.get("fernet_key"), f"{prefix}fernet_key")
+
+    # Parse whitelist and coerce chat id
+    allowed_set = parse_allowed_chat_ids(params.get("allowed_chat_ids"))
+    # Chat id can be int or str
+    try:
+        chat_id: int | str = int(tg_chat)
+    except Exception:
+        chat_id = tg_chat
+
+    # If whitelist configured and target not allowed → no-op
+    if allowed_set and not is_target_allowed(chat_id, allowed_set):
+        return {
+            "ok": True,
+            "scanned": 0,
+            "changed": 0,
+            "candidates": 0,
+            "alerts": 0,
+            "note": "telegram_chat_id not in allowed_chat_ids; skipped",
+        }
 
     # Load state
     store = S3StateStore(bucket=bucket, key=key, fernet_key=fernet_key)
@@ -132,12 +153,6 @@ def run_once() -> Dict[str, Any]:
 
     # Prepare clients
     with AlphaVantageClient(av_key) as av, TelegramClient(tg_token) as tg:
-        # Chat id can be int or str
-        try:
-            chat_id: int | str = int(tg_chat)
-        except Exception:
-            chat_id = tg_chat
-
         for sym in universe:
             try:
                 candles = av.daily_if_changed(sym, adjusted=True, outputsize="compact", cache=cache)
@@ -205,4 +220,3 @@ def run_once() -> Dict[str, Any]:
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return run_once()
-

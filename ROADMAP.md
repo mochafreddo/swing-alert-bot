@@ -84,7 +84,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 * [x] `open_runner` → apply gap filter, send updates
 * [x] `command_poller` → process Telegram commands
 * [ ] Enforce whitelist on outbound sends (EOD/Open)
-  * [ ] Validate `telegram_chat_id` against whitelist (no-op if unset)
+  * [x] Validate `telegram_chat_id` against whitelist (no-op if unset)
   * [ ] Unit tests for blocked outbound when not whitelisted
 
 ### Documentation
