@@ -25,6 +25,25 @@ def _patch_params(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(openmod, "_load_ssm_params", fake_load_ssm_params)
 
 
+def _patch_params_with_whitelist(monkeypatch: pytest.MonkeyPatch, allowed_value: str) -> None:
+    # Replace SSM loader with a static dict including a whitelist
+    from open import handler as openmod
+
+    def fake_load_ssm_params(prefix: str, names: list[str]) -> Dict[str, Optional[str]]:  # noqa: ARG001
+        return {
+            "alpha_vantage_api_key": "DUMMY-AV",
+            "telegram_bot_token": "DUMMY-TG",
+            "telegram_chat_id": "123456",
+            "fernet_key": "A" * 43,
+            "allowed_chat_ids": allowed_value,
+        }
+
+    monkeypatch.setenv("STATE_BUCKET", "test-bucket")
+    monkeypatch.setenv("STATE_KEY", "state.json")
+    monkeypatch.setenv("PARAM_PREFIX", "/swing/dev/")
+    monkeypatch.setattr(openmod, "_load_ssm_params", fake_load_ssm_params)
+
+
 class _FakeStore:
     def __init__(self, *, initial_state) -> None:
         self._state = initial_state
@@ -232,3 +251,16 @@ def test_open_send_error_does_not_mark_dedup(monkeypatch: pytest.MonkeyPatch):
     if store.writes:
         assert store.writes[-1].alerts_sent.get("AMD:2024-09-04:OPEN_UPDATE") is None
 
+
+def test_open_whitelist_blocks_outbound_when_not_whitelisted(monkeypatch: pytest.MonkeyPatch):
+    from open import handler as openmod
+
+    # Configure whitelist that does NOT include the target chat id (123456)
+    _patch_params_with_whitelist(monkeypatch, allowed_value="789")
+
+    out = openmod.run_once()
+
+    assert out["ok"] is True
+    assert out["checked"] == 0
+    assert out["updates"] == 0
+    assert out.get("note") == "telegram_chat_id not in allowed_chat_ids; skipped"
