@@ -90,7 +90,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 ### Documentation
 
 * [x] Document whitelist configuration and operations in `TECHNICAL_DESIGN.md`
-* [ ] Add a short note to README on adding/removing chat IDs
+* [x] Add a short note to README on adding/removing chat IDs
 
 ### G. CI/CD
 
