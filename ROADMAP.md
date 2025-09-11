@@ -95,7 +95,7 @@ The project is a **solo side project** (Geoffrey + Codex), with **no fixed deadl
 ### G. CI/CD
 
 * [x] Setup GitHub Actions CI (lint, typecheck, tests with `uv`)
-* [ ] Setup GitHub Actions CD (Terraform plan/apply with OIDC → AWS)
+* [x] Setup GitHub Actions CD (Terraform plan/apply with OIDC → AWS)
 * [ ] Cache uv dependencies in CI
 
 ---

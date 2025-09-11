@@ -192,3 +192,60 @@ The repo root contains a `Makefile` wrapping common Terraform commands. It suppo
 Notes:
 - If you don’t use `aws-vault`, omit `AWS_VAULT_PROFILE` and ensure your AWS CLI is authenticated.
 - All targets run with `-chdir=infra/terraform`, so you can invoke from the repo root.
+
+---
+
+## GitHub Actions CD (OIDC → AWS)
+
+This repo includes `.github/workflows/deploy.yml` to plan/apply Terraform via GitHub Actions using OpenID Connect to assume an AWS IAM role.
+
+What it does:
+- Plan on PRs from branches within the same repo (skips forks for safety).
+- On pushes to `main` touching `infra/terraform/**`, plans and auto-applies to `dev`.
+- Manual prod deploys via “Run workflow” (`workflow_dispatch`) with inputs: environment=`prod`, apply=`true`.
+
+Prepare AWS (one-time per account):
+1) Create an IAM role to be assumed by GitHub Actions via OIDC.
+   - Trust policy example (replace `<ACCOUNT_ID>`, `<OWNER>`, `<REPO>`, and allow the environments you use):
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Principal": {
+           "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+         },
+         "Action": "sts:AssumeRoleWithWebIdentity",
+         "Condition": {
+           "StringEquals": {
+             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+           },
+           "StringLike": {
+             "token.actions.githubusercontent.com:sub": [
+               "repo:<OWNER>/<REPO>:ref:refs/heads/main",
+               "repo:<OWNER>/<REPO>:environment:dev",
+               "repo:<OWNER>/<REPO>:environment:prod"
+             ]
+           }
+         }
+       }
+     ]
+   }
+   ```
+   - Attach least-privilege permissions needed by this Terraform (S3, IAM, Lambda, EventBridge, SSM, CloudWatch Logs). For a personal project, `PowerUserAccess` is acceptable to start; tighten later.
+
+2) In GitHub, create two Environments: `dev` and `prod`.
+   - Add Environment Variables (or Secrets):
+     - `AWS_ROLE_TO_ASSUME` = the IAM role ARN created above
+     - `AWS_REGION` = region used by TF (e.g., `us-east-1`)
+   - Optionally require reviewers on `prod` to gate applies.
+
+Usage:
+- Dev auto-apply: push to `main` with changes in `infra/terraform/**`.
+- Prod manual: Actions → CD (Terraform) → Run workflow → environment=`prod`, apply=`true`.
+- Plans are uploaded as build artifacts (`tfplan-<env>`).
+
+Notes:
+- This repo uses local Terraform state with workspaces by default; the workflow mirrors that. For CI-safe remote state, see “Environments & State (Local by default)” in `TECHNICAL_DESIGN.md` and add an S3+DynamoDB backend.
+- PRs from forks don’t have OIDC tokens; the workflow skips those PR plans automatically.
